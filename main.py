@@ -41,7 +41,7 @@ async def voice(
             action='/voice',
             method='POST'
         )
-        gather.say("שלום, בבקשה תגיד את תוכן השיחה", language="he-IL", voice="Polly.Carmit")
+        gather.say("שלום, כאן העוזר האישי של בר, מי מחפש אותו?", language="he-IL", voice="Polly.Carmit")
 
     return Response(content=str(response), media_type="application/xml")
 
