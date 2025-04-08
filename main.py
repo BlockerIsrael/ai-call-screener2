@@ -6,7 +6,7 @@ import os
 
 app = FastAPI()
 
-# לקוח GPT
+# יצירת לקוח GPT עם המפתח שלך
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.post("/voice")
@@ -17,11 +17,11 @@ async def voice(
     response = VoiceResponse()
 
     if SpeechResult:
-        # יש תמלול - שולחים ל-GPT
+        # יש תמלול – שולחים ל-GPT
         verdict = await analyze_call(SpeechResult)
         response.say(f"השיחה מסווגת כ: {verdict}", language="he-IL", voice="Polly.Carmit")
     else:
-        # תחילת שיחה - מבקשים מהמתקשר לדבר
+        # תחילת שיחה – מבקשים מהמתקשר לדבר
         gather = response.gather(
             input='speech',
             timeout=5,
@@ -35,7 +35,7 @@ async def voice(
 
 
 async def analyze_call(transcript):
-  prompt = f"""
+    prompt = f"""
 אתה בוט קולי שמטרתו לסנן שיחות עבור קשישים. מדובר באוכלוסייה רגישה, והאחריות על כתפיך כבדה מאוד.
 
 תפקידך הוא לנהל את השיחה ולהוביל אותה בצורה ברורה, חדה, קצרה ועניינית – מבלי לאפשר למתקשר להסיט את הנושא. אתה שואל, הוא עונה. בשום שלב אתה לא נותן לו לנהל את השיחה.
@@ -57,11 +57,10 @@ async def analyze_call(transcript):
 - הונאה
 
 תוכן השיחה כולה:
-"{speech_result}"
-"""
+\"{transcript}\"
 
-   החזר רק אחת מהמילים: בטוחה, חשודה, הונאה בהתאם למה שהחלטת בשיחה.
-    """
+החזר רק אחת מהמילים: בטוחה, חשודה, הונאה בהתאם למה שהחלטת בשיחה.
+"""
 
     chat = client.chat.completions.create(
         model="gpt-3.5-turbo",
