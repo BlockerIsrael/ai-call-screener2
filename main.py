@@ -19,7 +19,19 @@ async def voice(
     if SpeechResult:
         # יש תמלול – שולחים ל-GPT
         verdict = await analyze_call(SpeechResult)
-        response.say(f"השיחה מסווגת כ: {verdict}", language="he-IL", voice="Polly.Carmit")
+
+        # תגובה שונה לפי הסיווג
+        if verdict == "בטוחה":
+            response.say("השיחה נשמעת תקינה. מחבר את השיחה כעת.", language="he-IL", voice="Polly.Carmit")
+        elif verdict == "חשודה":
+            response.say("השיחה מסווגת כחשודה. מחזיק את המתקשר על הקו ומעביר לבדיקה נוספת.", language="he-IL", voice="Polly.Carmit")
+        elif verdict == "הונאה":
+            response.say("השיחה מסווגת כהונאה. ניתוק מיידי.", language="he-IL", voice="Polly.Carmit")
+            response.hangup()
+        else:
+            response.say("לא ניתן לנתח את השיחה. סיום השיחה.", language="he-IL", voice="Polly.Carmit")
+            response.hangup()
+
     else:
         # תחילת שיחה – מבקשים מהמתקשר לדבר
         gather = response.gather(
@@ -47,26 +59,4 @@ async def analyze_call(transcript):
 
 אם המתקשר לא עונה תשובות ברורות – יש לציין שהשיחה לא מאושרת.
 
-אם התשובה קשורה לנושאים פיננסיים כגון בנק, פנסיה, ביטוח או מידע אישי רגיש – יש להזהיר את המשתמש שהשיחה חשודה, ולהמליץ שלא להמשיך את השיחה אלא רק לקבל הודעה.
-
-השיחה צריכה להתנהל בהובלתך בלבד. כל ניסיון להסיט את השיחה, לשאול שאלות חזרה, להתחמק – צריך להיחשב כנורת אזהרה.
-
-לאחר סיום השיחה, יש לנתח את מטרתה ולהחזיר אחת מהתשובות הבאות בלבד:
-- בטוחה
-- חשודה
-- הונאה
-
-תוכן השיחה כולה:
-\"{transcript}\"
-
-החזר רק אחת מהמילים: בטוחה, חשודה, הונאה בהתאם למה שהחלטת בשיחה.
-"""
-
-    chat = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    return chat.choices[0].message.content.strip()
+אם התשובה קשורה לנושאים פיננסיים כגון בנק, פנסיה, ביטוח או מידע אישי רגיש –
