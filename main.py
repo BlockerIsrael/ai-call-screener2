@@ -1,78 +1,81 @@
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import Response
 from openai import OpenAI
-from twilio.twiml.voice_response import VoiceResponse
+from twilio.twiml.voice_response import VoiceResponse, Gather
 import os
 
 app = FastAPI()
-
-# יצירת לקוח GPT עם המפתח שלך
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# משתנים זמניים לשמירת תוכן התשובות
+call_data = {}
+
 @app.post("/voice")
-async def voice(
+async def handle_call(
     request: Request,
-    SpeechResult: str = Form(None)
+    SpeechResult: str = Form(None),
+    step: str = Form(default="start"),
+    CallSid: str = Form(default=None)
 ):
     response = VoiceResponse()
+    sid = CallSid or "temp"
 
-    if SpeechResult:
-        # יש תמלול – שולחים ל-GPT
-        verdict = await analyze_call(SpeechResult)
+    if sid not in call_data:
+        call_data[sid] = {"name": "", "company": "", "purpose": ""}
 
-        # תגובה שונה לפי הסיווג
+    if step == "start":
+        gather = Gather(input="speech", action="/voice", method="POST", speechTimeout="auto")
+        gather.say("שלום, כאן העוזר של בר. מה שמך בבקשה?", language="he-IL", voice="Polly.Carmit")
+        response.append(gather)
+
+    elif step == "name":
+        call_data[sid]["name"] = SpeechResult or ""
+        gather = Gather(input="speech", action="/voice", method="POST", speechTimeout="auto")
+        gather.say("מאיזו חברה אתה מתקשר או מטעם מי?", language="he-IL", voice="Polly.Carmit")
+        response.append(gather)
+
+    elif step == "company":
+        call_data[sid]["company"] = SpeechResult or ""
+        gather = Gather(input="speech", action="/voice", method="POST", speechTimeout="auto")
+        gather.say("מה מטרת השיחה שלך?", language="he-IL", voice="Polly.Carmit")
+        response.append(gather)
+
+    elif step == "purpose":
+        call_data[sid]["purpose"] = SpeechResult or ""
+
+        # שליחת הכל ל-GPT
+        full_text = f"""
+        שם המתקשר: {call_data[sid]['name']}
+        החברה או הגורם: {call_data[sid]['company']}
+        מטרת השיחה: {call_data[sid]['purpose']}
+        """
+
+        verdict = await analyze_call(full_text)
+
         if verdict == "בטוחה":
-            response.say("השיחה נשמעת תקינה. מחבר את השיחה כעת.", language="he-IL", voice="Polly.Carmit")
+            response.say("תודה. השיחה סווגה כבטוחה. אנו מחברים אותך עכשיו.", language="he-IL", voice="Polly.Carmit")
         elif verdict == "חשודה":
-            response.say("השיחה מסווגת כחשודה. מחזיק את המתקשר על הקו ומעביר לבדיקה נוספת.", language="he-IL", voice="Polly.Carmit")
+            response.say("השיחה מסווגת כחשודה. מחזיקים את השיחה לבדיקה נוספת.", language="he-IL", voice="Polly.Carmit")
         elif verdict == "הונאה":
-            response.say("השיחה מסווגת כהונאה. ניתוק מיידי.", language="he-IL", voice="Polly.Carmit")
+            response.say("השיחה סווגה כהונאה. מנתקים את השיחה.", language="he-IL", voice="Polly.Carmit")
             response.hangup()
         else:
-            response.say("לא ניתן לנתח את השיחה. סיום השיחה.", language="he-IL", voice="Polly.Carmit")
+            response.say("לא ניתן לקבוע את טיב השיחה. סיום.", language="he-IL", voice="Polly.Carmit")
             response.hangup()
 
-    else:
-        # תחילת שיחה – מבקשים מהמתקשר לדבר
-        gather = response.gather(
-            input='speech',
-            timeout=5,
-            speech_timeout='auto',
-            action='/voice',
-            method='POST'
-        )
-        gather.say("שלום, כאן העוזר האישי של בר, מי מחפש אותו?", language="he-IL", voice="Polly.Carmit")
+        call_data.pop(sid, None)  # מנקה מהזיכרון
 
     return Response(content=str(response), media_type="application/xml")
 
 
 async def analyze_call(transcript):
     prompt = f"""
-אתה בוט קולי שמטרתו לסנן שיחות עבור קשישים. מדובר באוכלוסייה רגישה, והאחריות על כתפיך כבדה מאוד.
+אתה עוזר קול שמסנן שיחות עבור קשישים. עליך להעריך האם מדובר בשיחה בטוחה, חשודה או הונאה – לפי שלושה פרטים:
 
-תפקידך הוא לנהל את השיחה ולהוביל אותה בצורה ברורה, חדה, קצרה ועניינית – מבלי לאפשר למתקשר להסיט את הנושא. אתה שואל, הוא עונה. בשום שלב אתה לא נותן לו לנהל את השיחה.
+{transcript}
 
-יש לשאול את השאלות הבאות, ברצף, בשפה ברורה ונוקשה:
-1. מה שמך?
-2. מאיזו חברה אתה מתקשר, או מטעם מי?
-3. מה מטרת השיחה?
-
-אם המתקשר לא עונה תשובות ברורות – יש לציין שהשיחה לא מאושרת.
-
-אם התשובה קשורה לנושאים פיננסיים כגון בנק, פנסיה, ביטוח או מידע אישי רגיש – יש להזהיר את המשתמש שהשיחה חשודה, ולהמליץ שלא להמשיך את השיחה אלא רק לקבל הודעה.
-
-השיחה צריכה להתנהל בהובלתך בלבד. כל ניסיון להסיט את השיחה, לשאול שאלות חזרה, להתחמק – צריך להיחשב כנורת אזהרה.
-
-לאחר סיום השיחה, יש לנתח את מטרתה ולהחזיר אחת מהתשובות הבאות בלבד:
-- בטוחה
-- חשודה
-- הונאה
-
-תוכן השיחה כולה:
-\"{transcript}\"
-
-החזר רק אחת מהמילים: בטוחה, חשודה, הונאה בהתאם למה שהחלטת בשיחה.
-"""
+ענה רק באחת מהמילים: בטוחה, חשודה, הונאה.
+    """
 
     chat = client.chat.completions.create(
         model="gpt-3.5-turbo",
